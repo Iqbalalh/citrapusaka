@@ -1,102 +1,154 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect, useRef, useCallback } from 'react';
+import CategoryNav from '@/components/CategoryNav';
+import MasonryGrid from '@/components/MasonryGrid';
+import { fetchGalleriesPaginated, fetchCategories, fetchRegions } from '@/lib/api';
+import { Category, Image, Region } from '@/lib/types';
+
+const ITEMS_PER_PAGE = 30;
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [regions, setRegions] = useState<Region[]>([]);
+  const [galleries, setGalleries] = useState<Image[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+  const [selectedRegion, setSelectedRegion] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const observer = useRef<IntersectionObserver | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Fetch categories and regions on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [categoriesData, regionsData] = await Promise.all([
+          fetchCategories(),
+          fetchRegions()
+        ]);
+        setCategories(categoriesData);
+        setRegions(regionsData);
+      } catch (error) {
+        console.error('Error fetching data:', error);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Fetch galleries based on current page, category, and region
+  const fetchGalleriesData = useCallback(async (page: number, categoryId: number | null, regionId: number | null) => {
+    try {
+      const result = await fetchGalleriesPaginated(
+        page,
+        ITEMS_PER_PAGE,
+        categoryId || undefined,
+        regionId || undefined
+      );
+      
+      if (page === 1) {
+        setGalleries(result.data);
+      } else {
+        setGalleries((prev) => [...prev, ...result.data]);
+      }
+      
+      setHasMore(result.pagination.hasMore);
+    } catch (error) {
+      console.error('Error fetching galleries:', error);
+    }
+  }, []);
+
+  // Initial load and filter change
+  useEffect(() => {
+    const loadInitialData = async () => {
+      setLoading(true);
+      setCurrentPage(1);
+      await fetchGalleriesData(1, selectedCategory, selectedRegion);
+      setLoading(false);
+    };
+
+    loadInitialData();
+  }, [selectedCategory, selectedRegion, fetchGalleriesData]);
+
+  // Infinite scroll observer
+  const lastImageRef = useCallback((node: HTMLDivElement | null) => {
+    if (loadingMore) return;
+    if (observer.current) observer.current.disconnect();
+
+    observer.current = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !loading) {
+        setLoadingMore(true);
+        const nextPage = currentPage + 1;
+        setCurrentPage(nextPage);
+        fetchGalleriesData(nextPage, selectedCategory, selectedRegion).then(() => {
+          setLoadingMore(false);
+        });
+      }
+    });
+
+    if (node) observer.current.observe(node);
+  }, [loadingMore, hasMore, loading, currentPage, selectedCategory, selectedRegion, fetchGalleriesData]);
+
+  const handleCategoryChange = (categoryId: number | null) => {
+    setSelectedCategory(categoryId);
+  };
+
+  const handleRegionChange = (regionId: number | null) => {
+    setSelectedRegion(regionId);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-gray-600">Memuat galeri...</p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-white">
+      <CategoryNav
+        categories={categories}
+        regions={regions}
+        selectedCategory={selectedCategory}
+        selectedRegion={selectedRegion}
+        onCategorySelect={handleCategoryChange}
+        onRegionSelect={handleRegionChange}
+      />
+      
+      <div className="flex-1 pt-4">
+        <MasonryGrid
+          images={galleries}
+          categories={categories}
+          lastImageRef={lastImageRef}
+        />
+      </div>
+
+      {loadingMore && (
+        <div className="flex justify-center items-center py-8">
+          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      )}
+      
+      {!hasMore && galleries.length > 0 && (
+        <div className="text-center py-4 text-gray-500 text-sm">
+          {/* Semua galeri telah ditampilkan */}
+        </div>
+      )}
+      
+      <footer className="bg-linear-to-r from-blue-500 to-indigo-600 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="text-center">
+            <p className="text-white text-sm">
+              © 2025 Yayasan Pusaka. Membangun masa depan yang lebih baik.
+            </p>
+          </div>
+        </div>
       </footer>
     </div>
   );
