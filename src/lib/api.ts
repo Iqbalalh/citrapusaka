@@ -7,6 +7,7 @@ export interface Gallery {
   caption: string | null;
   regionId: number | null;
   regionName: string | null;
+  galleryDate: string | null;
   categories: Category[];
   region: Region | null;
   createdAt: string;

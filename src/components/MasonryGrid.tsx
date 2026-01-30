@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import { Image as ImageType, Category } from '@/lib/types';
 
@@ -13,6 +13,8 @@ interface MasonryGridProps {
 export default function MasonryGrid({ images, lastImageRef }: MasonryGridProps) {
   const [hoveredImage, setHoveredImage] = useState<number | null>(null);
   const [selectedImage, setSelectedImage] = useState<ImageType | null>(null);
+  const [columnLayout, setColumnLayout] = useState<{ image: ImageType; index: number }[][]>([]);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const getCategoryNames = (imageCategories: Category[]) => {
     return imageCategories.map((cat) => cat.name);
@@ -26,18 +28,63 @@ export default function MasonryGrid({ images, lastImageRef }: MasonryGridProps) 
     setSelectedImage(null);
   };
 
+  // Calculate masonry layout - fill left to right, tightly packed vertically
+  useEffect(() => {
+    const calculateLayout = () => {
+      if (!containerRef.current) return;
+
+      const containerWidth = containerRef.current.offsetWidth;
+      const gap = 24; // gap-6 = 24px
+      
+      // Calculate number of columns based on container width
+      let numColumns = 1;
+      if (containerWidth >= 1280) numColumns = 5; // xl
+      else if (containerWidth >= 1024) numColumns = 4; // lg
+      else if (containerWidth >= 768) numColumns = 3; // md
+      else if (containerWidth >= 640) numColumns = 2; // sm
+      else numColumns = 1;
+
+      // Initialize columns with their heights
+      const columns: { image: ImageType; index: number }[][] = Array.from({ length: numColumns }, () => []);
+      const columnHeights = Array(numColumns).fill(0);
+
+      // Distribute images to columns, always placing in the shortest column
+      images.forEach((image, imageIndex) => {
+        // Find the column with the minimum height
+        const minHeightIndex = columnHeights.indexOf(Math.min(...columnHeights));
+        
+        columns[minHeightIndex].push({ image, index: imageIndex });
+        
+        // Estimate image height (aspect ratio based)
+        // Default aspect ratio if we can't determine it
+        const aspectRatio = 0.67; // 400x600 default
+        const estimatedHeight = 400 * aspectRatio + 150; // image height + caption + spacing
+        
+        columnHeights[minHeightIndex] += estimatedHeight + gap;
+      });
+
+      setColumnLayout(columns);
+    };
+
+    calculateLayout();
+    window.addEventListener('resize', calculateLayout);
+    return () => window.removeEventListener('resize', calculateLayout);
+  }, [images]);
+
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="columns-1 sm:columns-2 md:columns-3 lg:columns-4 xl:columns-5 gap-6 space-y-6">
-        {images.map((image, index) => (
-          <div
-            key={image.id}
-            ref={index === images.length - 1 ? lastImageRef : undefined}
-            className="break-inside-avoid group cursor-pointer"
-            onMouseEnter={() => setHoveredImage(image.id)}
-            onMouseLeave={() => setHoveredImage(null)}
-            onClick={() => handleImageClick(image)}
-          >
+      <div ref={containerRef} className="flex gap-6">
+        {columnLayout.map((column, colIndex) => (
+          <div key={colIndex} className="flex-1 flex flex-col gap-6 min-w-0">
+            {column.map(({ image, index }) => (
+              <div
+                key={image.id}
+                ref={index === images.length - 1 ? lastImageRef : undefined}
+                className="group cursor-pointer"
+                onMouseEnter={() => setHoveredImage(image.id)}
+                onMouseLeave={() => setHoveredImage(null)}
+                onClick={() => handleImageClick(image)}
+              >
             {/* Image container */}
             <div className="relative w-full overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300">
               {image.s3Path ? (
@@ -80,6 +127,8 @@ export default function MasonryGrid({ images, lastImageRef }: MasonryGridProps) 
                 {image.caption}
               </p>
             )}
+              </div>
+            ))}
           </div>
         ))}
       </div>
